@@ -1,0 +1,6 @@
+{
+    "fmriprep_derivatives_dir": "/oak/stanford/groups/russpold/data/openneuro_fitlins/fmriprep",
+    "code_repo": "/oak/stanford/groups/russpold/users/demidenm/fmriprep-qc-utils",
+    "tmp_folder": "/scratch/groups/russpold/demidenm/openneuro_checks",
+    "output_dir": "/oak/stanford/groups/russpold/users/demidenm/fmriprep-qc-utils/results"
+}
