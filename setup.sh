@@ -96,7 +96,11 @@ else
     conda create -y -n "$ants_conda" -c conda-forge ants
 fi
 
+# === Sync Python env with uv ===
+uv sync
+
 # === Add ants/afni to UV activate ===
+
 uv_env_act_file=".venv/bin/activate"
 
 if grep -q "Add AFNI" "$uv_env_act_file" && grep -q "Add ANTs from conda env" "$uv_env_act_file"; then
@@ -118,9 +122,6 @@ echo "AFNI and ANTs installed and available in current shell session."
 EOF
     echo "AFNI and ANTs configurations added to $uv_env_act_file."
 fi
-
-# === Sync Python env with uv ===
-uv sync
 
 
 
