@@ -18,6 +18,8 @@ The setup script will:
 5. Configure environment activation (.venv/source/activate) to include AFNI and ANTs in the path
 6. uv sync the Python environment with required packages
 
+After installation, update the paths in the `path_config.json` files which points to where fmriprep derivatives subdirectories are (`fmriprep_derivatives_dir`), the cloned repo (`code_repo`), the scratch folder (`tmp_folder`) and the location to where the .tsv results dataframes should be saved (`output_dir`). 
+
 ## Overview
 
 The quality checking scripts assess the accuracy of spatial normalization by comparing subject-level brain masks in MNI152NLin2009cAsym space with the reference target mask. The checks include:
@@ -34,12 +36,17 @@ Run the quality check with:
 ./run_derivatives_check.sh <openneuro_folder>
 ```
 
-Example:
+Example 1:
 ```bash
 ./run_derivatives_check.sh ds000009-fmriprep
 ```
 
-The script automatically determines whether to run the full or minimal derivatives check based on the available data files.
+Example 2:
+```bash
+./run_derivatives_check.sh ds000009
+```
+
+The script automatically determines whether to run the full or minimal derivatives check based on the available data files. Note: the folder name for the fMRIprep dataset should correspond to the name of the subfolder name within `fmriprep_derivatives_dir` that is specified in the `path_config.json` file. 
 
 ## How It Works
 

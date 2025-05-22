@@ -123,5 +123,10 @@ EOF
     echo "AFNI and ANTs configurations added to $uv_env_act_file."
 fi
 
+source $uv_env_act_file
+
+echo -e "\n\e[31mIf you have not yet, update the paths in: $(pwd)/path_config.json\e[0m\n"
+echo -e "\t: $(pwd)/path_config.json\e[0m\n"
+
 
 
