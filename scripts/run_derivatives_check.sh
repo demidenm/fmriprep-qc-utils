@@ -49,7 +49,7 @@ sleep 2
 
 # check whether preproc bold volumetric data exists, if it does, data are NOT minimal derivatives.
 
-if find "${data_dir}/${openneuro_id}/sub-*" -name "*space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz" -print -quit 2>/dev/null | grep -q .; then
+if find ${data_dir}/${openneuro_id}/sub-* -name "*space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz" -print -quit 2>/dev/null | grep -q .; then
     minimal_derivatives="no"
     echo -e "Found complete derivatives with MNI152 space files\n"
 else

@@ -36,13 +36,15 @@ mni_mask = mask_dir / "tpl-MNI152NLin2009cAsym_res-02_desc-brain_mask.nii.gz"
 print("Building layout... for", study_id, "\n\t",derivs_path)
 fmrirepderiv_layout = BIDSLayout(derivs_path, validate=False)
 
-qc_results = process_subject_run_full(fmrilayout=fmrirepderiv_layout, mni_mask=mni_mask, output_dir=output_dir)
+df_qcresults = process_subject_run_full(fmrilayout=fmrirepderiv_layout, mni_mask=mni_mask, output_dir=output_dir)
+if df_qcresults.empty:
+    raise ValueError("Error: df_qcresults is empty. No QC results found.")
 
 # flag if similarity is lower than .80 or voxoutmask are 
-qc_results["flagged"] = (
-    (qc_results["dice"] < 0.80) | (qc_results["voxoutmask"] > 20) | (qc_results["numvox_grtr_1e10"] > 0)
+df_qcresults["flagged"] = (
+    (df_qcresults["dice"] < 0.80) | (df_qcresults["voxoutmask"] > 20) | (df_qcresults["numvox_grtr_1e10"] > 0)
 ).astype(int)
 
 filename = f"study-{study_id}_check-bold_fmriprep-nonminimal.tsv"
-qc_results.to_csv(output_dir / filename, sep='\t', index=False)
+df_qcresults.to_csv(output_dir / filename, sep='\t', index=False)
 print(f"Results saved to {output_dir / filename}")

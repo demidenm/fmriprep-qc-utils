@@ -103,11 +103,14 @@ uv sync
 
 uv_env_act_file=".venv/bin/activate"
 
-if grep -q "Add AFNI" "$uv_env_act_file" && grep -q "Add ANTs from conda env" "$uv_env_act_file"; then
+if grep -q "Add Root Dir" "$uv_env_act_file" && grep -q "Add AFNI" "$uv_env_act_file" && grep -q "Add ANTs from conda env" "$uv_env_act_file"; then
     echo "AFNI and ANTs configurations already exist in $uv_env_act_file."
 else
     # Add the configurations to the end of the file
     cat << 'EOF' >> "$uv_env_act_file"
+
+# Add Root Dir
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Add AFNI
 export AFNI_DIR="${PROJECT_ROOT}/tools/afni"

@@ -80,7 +80,10 @@ for taskname in task_list:
 
 # Combine results into DataFrame
 df_qcresults = pd.DataFrame(qc_results)
+if df_qcresults.empty:
+    raise ValueError("Error: df_qcresults is empty. No QC results found.")
 
+    
 # flag if similarity is lower than .80 or voxoutmask are 
 df_qcresults["flagged"] = (
     (df_qcresults["dice"] < 0.80) | (df_qcresults["voxoutmask"] > 20) | (df_qcresults["numvox_grtr_1e10"] > 0)
