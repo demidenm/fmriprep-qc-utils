@@ -58,7 +58,56 @@ The script automatically detects whether to use the full or minimal derivatives 
 find "${data_dir}/${openneuro_id}/sub-*" -name "*space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz" -print -quit 2>/dev/null | grep -q .
 ```
 
-### Minimal Derivatives Check (`minimal_derivs_check.py`)
+### FMRIPrep Derivatives Check (`fp_derivs_check.py`)
+
+For datasets with minimal derivatives, the script:
+
+1. Uses `BIDSLayout` to find for each subject, task, session and run:
+   - Coregistration transform files (.txt)
+   - MNI152NLin2009cAsym transform files (.h5)
+   - Coregistered BOLD reference files (.nii.gz)
+
+2. Performs brain extraction using the same approach as fMRIPrep:
+   ```python
+   from niworkflows.func.util import init_skullstrip_bold_wf
+   ```
+
+3. Computes FOV from the brainref (full derivatives) and coreg brainref (minimal derivatives)
+
+4. Transforms the subject's coregistered BOLD reference file and the FOV to MNI152NLin2009cAsym space
+
+5. Constrains the MNI152NLin2009cAsym target mask by the FOV (reducing scanner specific bias in computation)
+
+6. Checks for extreme voxel values (>1e10)
+
+7. Calculates the Dice coefficient between the subject's MNI space brain mask and the target space brain mask
+
+8. Determines how many voxels in the subject's brain mask fall outside the target mask using 
+
+9. Generates flag based on < .80 similarity, > .20 voxels outside of mask, or >0 extreme 1e10 values.
+
+
+### Output
+
+Results are saved to:
+```
+{repo_dir}/results/study-{id}_check-bold_fmriprep-{minimal/nonminal}.tsv
+```
+
+The output TSV file contains:
+- `img1`: Subject, task, run, session information
+- `img1name`: Full image filename
+- `img2`: MNI152 target (same for all subjects)
+- `dice`: Dice similarity between img1 and img2
+- `voxinmask`: Percentage of voxels in mask
+- `voxoutmask`: Percentage of voxels outside mask
+- `ratio_inoutmask`: Ratio of in/out mask voxels
+- `numvox_grtr_1e10`: Number of voxels with values >1e10
+- `flagged`: Indicates quality issues (TRUE if dice <0.80, voxoutmask >20%, or any voxels >1e10)
+
+
+
+### [No longer used] Minimal Derivatives Check (`minimal_derivs_check.py`)
 
 For datasets with minimal derivatives, the script:
 
@@ -80,7 +129,7 @@ For datasets with minimal derivatives, the script:
 
 6. Determines how many voxels in the subject's brain mask fall outside the target mask
 
-### Full Derivatives Check (`full_derivs_check.py`)
+### [No longer used] Full Derivatives Check (`full_derivs_check.py`)
 
 For datasets with full derivatives, the script:
 
@@ -89,22 +138,4 @@ For datasets with full derivatives, the script:
 2. Directly calculates:
    - Dice similarity coefficient between subject masks and the target mask
    - Percentage of voxels outside the target mask
-
-### Output
-
-Results are saved to:
-```
-{repo_dir}/results/study-{id}_check-bold_fmriprep-{minimal/nonminal}.tsv
-```
-
-The output TSV file contains:
-- `img1`: Subject, task, run, session information
-- `img1name`: Full image filename
-- `img2`: MNI152 target (same for all subjects)
-- `dice`: Dice similarity between img1 and img2
-- `voxinmask`: Percentage of voxels in mask
-- `voxoutmask`: Percentage of voxels outside mask
-- `ratio_inoutmask`: Ratio of in/out mask voxels
-- `numvox_grtr_1e10`: Number of voxels with values >1e10
-- `flagged`: Indicates quality issues (TRUE if dice <0.80, voxoutmask >20%, or any voxels >1e10)
 
