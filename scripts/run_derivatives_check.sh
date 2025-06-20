@@ -50,31 +50,22 @@ sleep 2
 # check whether preproc bold volumetric data exists, if it does, data are NOT minimal derivatives.
 
 if find ${data_dir}/${openneuro_id}/sub-* -name "*space-MNI152NLin2009cAsym_res-2_desc-preproc_bold.nii.gz" -print -quit 2>/dev/null | grep -q .; then
-    minimal_derivatives="no"
+    minimal_derivatives="non-minimal"
     echo -e "Found complete derivatives with MNI152 space files\n"
 else
-    minimal_derivatives="yes"
+    minimal_derivatives="minimal"
     echo -e "⚠️  Only minimal derivatives available\n"
 fi
 
 cd ${scratch_out}
 
-if [ "$minimal_derivatives" = "yes" ]; then
-  uv --project "${repo_dir}" run python \
-      "${scripts_dir}/minimal_derivs_check.py" \
-      --openneuro_study "${openneuro_id}" \
-      --derivs_path "${data_dir}/${openneuro_id}" \
-      --mask_dir "${mask_path}" \
-      --outdir "${output_dir}" \
-      --tmpdir "${scratch_out}"
-else
-    uv --project "${repo_dir}" run python \
-      "${scripts_dir}/full_derivs_check.py" \
-      --openneuro_study "${openneuro_id}" \
-      --derivs_path "${data_dir}/${openneuro_id}" \
-      --mask_dir "${mask_path}" \
-      --outdir "${output_dir}" \
-      --tmpdir "${scratch_out}"
-fi
+uv --project "${repo_dir}" run python \
+    "${scripts_dir}/fp_derivs_check.py" \
+    --openneuro_study "${openneuro_id}" \
+    --derivs_path "${data_dir}/${openneuro_id}" \
+    --deriv_type "${minimal_derivatives}" \
+    --mask_dir "${mask_path}" \
+    --outdir "${output_dir}" \
+    --tmpdir "${scratch_out}"
 
 cd ${scripts_dir}

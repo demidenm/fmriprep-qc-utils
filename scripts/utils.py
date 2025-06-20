@@ -8,7 +8,7 @@ from pyrelimri import similarity
 from niworkflows.func.util import init_skullstrip_bold_wf
 from pathlib import Path
 import pandas as pd
-from nilearn.image import load_img, math_img
+from nilearn.image import load_img, math_img, new_img_like
 
 
 def voxel_inout_ratio(img_path: str, mask_path: str) -> Tuple[float, float, float]:
@@ -100,12 +100,13 @@ def similarity_boldtarget_metrics(img_path: Path, brainmask_path: Path, n_extrem
     }
     
 
-def boldref_to_targetspace(boldref_file, t1w_to_mni_file, boldref_to_t1w_file, mni_template, output_tmp):
+def boldmask_to_targetspace(boldmask, fov_mask, t1w_to_mni_file, boldref_to_t1w_file, mni_template, output_tmp):
     """
     Transform a BOLD reference image to target MNI space using ANTs.
 
     Parameters:
-    boldref_file (str or Path): Path to the BOLD reference image.
+    boldmask (str or Path): Path to the BOLD mask image.
+    fov_mask (str or Path): Path to the BOLD FOV mask image.
     t1w_to_mni_file (str or Path): Path to the T1w to MNI transformation file.
     boldref_to_t1w_file (str or Path): Path to the BOLD to T1w transformation file.
     mni_template (str or Path): Path to the MNI template reference image.
@@ -116,88 +117,92 @@ def boldref_to_targetspace(boldref_file, t1w_to_mni_file, boldref_to_t1w_file, m
     output_image (Path): Path to the transformed image.
     """
     try:
-        boldref = Path(boldref_file)
+        refmask = Path(boldmask)
+        fovmask = Path(fov_mask)
         t1w_to_mni = Path(t1w_to_mni_file)
         boldref_to_t1w = Path(boldref_to_t1w_file)
-        output_tmp = Path(output_tmp)
+        output_tmp = Path(output_tmp)    
+        output_tmp.mkdir(parents=True, exist_ok=True)
+
+        masks = {"refmask": refmask, "fovmask": fovmask}
+        outputs = {}
+
+        for mask_name, mask_path in masks.items():
+            print(f"Processing {mask_name}: {mask_path}")
+            
+            # Create consistent output filename
+            insert_str = "_space-MNI152NLin2009cAsym"
+            base_name = mask_path.stem.replace('.nii', '')  # Handle .nii.gz properly
+            out_file_name = f"{base_name}_{mask_name}{insert_str}.nii.gz"
+            output_image = output_tmp / out_file_name
+            
+            print(f"  Output: {output_image}")
+
+            # Build ANTs command
+            cmd = [
+                "antsApplyTransforms",
+                "--default-value", "0",
+                "--float", "1",
+                "--input", str(mask_path),
+                "--reference-image", str(mni_template),
+                "--output", str(output_image),
+                "--interpolation", "Linear",
+                "--transform", str(t1w_to_mni),
+                "--transform", str(boldref_to_t1w)
+            ]
+            
+            print(f"Running ANTs command for {mask_name}:")
+            print(" ".join(cmd))
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                print(f"Error running antsApplyTransforms:\n{result.stderr}")
+                return False, {}
+            else:
+                print(f"antsApplyTransforms completed: {output_image}")
+                outputs[mask_name] = output_image 
         
-        # Create output filename in the output_base_dir
-        insert_str = "_space-MNI152NLin2009cAsym_brain"
-        base_name = boldref.name[:-7]
-        out_file_name = base_name + insert_str + ".nii.gz"
-        output_image = output_tmp / out_file_name
-        output_image.parent.mkdir(parents=True, exist_ok=True)
-
-        print(f"Processing:")
-        print(f"  boldref: {boldref}")
-        print(f"  output_image: {output_image}")
-        
-        # ANTs command
-        cmd = [
-            "antsApplyTransforms",
-            "--default-value", "0",
-            "--float", "1",
-            "--input", str(boldref),
-            "--reference-image", str(mni_template),
-            "--output", str(output_image),
-            "--interpolation", "Linear",
-            "--transform", str(t1w_to_mni),
-            "--transform", str(boldref_to_t1w)
-        ]
-
-        print("Running command:")
-        print(" ".join(cmd))
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"Error running antsApplyTransforms:\n{result.stderr}")
-            return False, output_image
-        else:
-            print(f"antsApplyTransforms completed: {output_image}")
-            return True, output_image
+        return True, outputs
+    
     except Exception as e:
         print(f"Error processing {boldref_file}: {str(e)}")
-        return False, output_image
-        
+        return False, outputs
 
-def target_extractbrain(mni_image, output_tmp):
+
+def extract_brain(brain_image, output_tmp):
     """
-    Extract brain from a MNI-space image.
+    Extract brain from a brain image.
 
     Parameters:
-    mni_image (Path): Path to the MNI-space image.
+    brain_image (Path): Path to the brain native or MNI space image.
     output_tmp (Path): Path to the output directory.
 
     Returns:
-    success (bool): True if brain extraction was successful, False otherwise.
-    mni_image (Path): Path to the original MNI image.
-    mask_path (Path or None): Path to the generated brain mask if successful, None otherwise.
+    tuple: (success (bool), brain_image (Path), mask_path (Path or None))
     """
     try:
         subject_output_dir = Path(output_tmp)
-
         wf_dir = subject_output_dir / "working"
         wf_dir.mkdir(parents=True, exist_ok=True)
 
         wf = init_skullstrip_bold_wf(name="skullstrip_bold_wf")
         wf.base_dir = str(wf_dir)
-        wf.inputs.inputnode.in_file = str(mni_image)
+        wf.inputs.inputnode.in_file = str(brain_image)
         result = wf.run()
 
         # Prepare mask filename
-        mask_insert = "_mask"
-        boldmni_base = mni_image.name[:-7]
-        out_mask_name = boldmni_base + mask_insert + ".nii.gz"
-        mask_target = subject_output_dir / out_mask_name
+        brain_image = Path(brain_image)
+        bold_base = brain_image.name[:-7]
+        mask_name = bold_base + "_mask.nii.gz"
+        mask_target = subject_output_dir / mask_name
 
         # Find and copy mask file
-        found_mask = False
         for node in result.nodes:
             if "skullstrip" in node.name:
                 outputs = node.result.outputs.get()
                 mask_file = outputs.get('mask_file')
                 
-                # Search for mask_file in outputs if not directly available
+                # Check for mask_file in outputs if not directly available
                 if not mask_file:
                     for key in outputs:
                         if key.endswith('mask_file') and outputs[key]:
@@ -205,21 +210,19 @@ def target_extractbrain(mni_image, output_tmp):
                             break
                 
                 if mask_file and Path(mask_file).exists():
-                    found_mask = True
                     shutil.copy(mask_file, mask_target)
                     print(f"Brain mask copied to: {mask_target}")
-                    return True, mni_image, mask_target
+                    return True, brain_image, mask_target
 
         print("No brain mask found.")
-        return False, mni_image, None
+        return False, brain_image, None
 
     except Exception as e:
         print(f"Error in brain extraction: {str(e)}")
-        return False, mni_image, None
+        return False, brain_image, None
 
 
-
-def process_subject_run_minimal(sub, taskname, sess, runnum, fmrirepderiv_layout, mni_template, mni_mask, output_dir):
+def process_subject_run(sub, taskname, sess, runnum, fmriprep_deriv_layout, mni_template, mni_mask, deriv_type, output_dir):
     """
     Process a single subject's run for QC metrics.
     
@@ -228,34 +231,38 @@ def process_subject_run_minimal(sub, taskname, sess, runnum, fmrirepderiv_layout
     taskname (str): Task name.
     sess (str or None): Session ID or None if not available.
     runnum (str or None): Run number or None if not available.
-    fmrirepderiv_layout: BIDS layout object.
+    fmriprep_deriv_layout: BIDS layout object.
     mni_template (Path): Path to MNI template image.
     mni_mask (Path): Path to MNI mask image.
+    deriv_type (str): Type of fmriprep derivative ('minimal' or 'non-minimal').
     output_dir (Path): Output directory path.
     
     Returns:
     dict or None: QC metrics if successful, None otherwise.
     """
+    if deriv_type not in ["minimal", "non-minimal"]:
+        raise ValueError("deriv_type must be 'minimal' or 'non-minimal'")
+   
     # 1. Get transform files
-    boldref_to_t1w_files = fmrirepderiv_layout.get(
+    to_t1w_files = fmriprep_deriv_layout.get(
         subject=sub,
         task=taskname,
         session=sess,
         run=runnum,
         return_type='file',
-        extension=".txt",
+        extension=".txt", 
         suffix="xfm",
-        desc="coreg",
+        desc="coreg" if deriv_type == "minimal" else None,
         to="T1w",
         mode="image"
     )
-    print("boldref_to_t1w_files found", sub, taskname, sess, runnum, len(boldref_to_t1w_files))
-    
-    if not boldref_to_t1w_files:
+    print(f"to_t1w_files found: {sub} {taskname} {sess} {runnum} - {len(to_t1w_files)}")
+
+    if not to_t1w_files:
         return None
     
     # 2. Get T1w-to-MNI transform files
-    t1w_to_mni_files = fmrirepderiv_layout.get(
+    t1w_to_mni_files = fmriprep_deriv_layout.get(
         subject=sub,
         return_type='file',
         extension=".h5",
@@ -263,111 +270,75 @@ def process_subject_run_minimal(sub, taskname, sess, runnum, fmrirepderiv_layout
         to="MNI152NLin2009cAsym",
         mode="image"
     )
-    print("t1w_to_mni_files found from anat", sub, taskname, sess, len(t1w_to_mni_files))
+    print(f"t1w_to_mni_files found: {sub} {taskname} {sess} - {len(t1w_to_mni_files)}")
     
     if not t1w_to_mni_files:
         return None
     
-    # 3. Get coregistered boldref images
-    coreg_boldref_files = fmrirepderiv_layout.get(
+    # 3. Get boldref images
+    boldref_files = fmriprep_deriv_layout.get(
         subject=sub,
         task=taskname,
         session=sess,
         run=runnum,
         return_type='file',
         suffix="boldref",
-        desc="coreg",
+        desc="coreg" if deriv_type == "minimal" else None,
         extension=".nii.gz"
     )
-    print("coreg_boldref_files found", sub, taskname, sess, runnum, len(coreg_boldref_files))
+    print(f"boldref_files found: {sub} {taskname} {sess} {runnum} - {len(boldref_files)}")
     
-    if not coreg_boldref_files:
+    if not boldref_files:
         return None
+
+    # Create FOV image using boldref
+    boldref = load_img(boldref_files[0])
+    fov_img = new_img_like(boldref, np.ones(boldref.shape, dtype='u1'))
     
-    # Run boldref to target space transformation
-    ants_success, mni_path_out = boldref_to_targetspace(
-        boldref_file=coreg_boldref_files[0], 
+    boldref_path = Path(boldref_files[0])
+    base_name = boldref_path.name[:-7] if boldref_path.name.endswith('.nii.gz') else boldref_path.stem
+    fov_output_path = boldref_path.parent / f"{base_name}_fov.nii.gz"
+    fov_img.to_filename(str(fov_output_path))
+    
+    # Calculate extreme values (occurs in minimal when voxels are noise)
+    out_data = boldref.get_fdata()
+    num_extreme_voxels = np.sum(np.abs(out_data) > 1e10)
+    
+    # Extract brain
+    brain_extract_success, brain_out_image, brain_mask = extract_brain(
+        brain_image=boldref_path, 
+        output_tmp=output_dir
+    )
+    
+    if not brain_extract_success:
+        bold_base = boldref_path.name[:-7]
+        mask_name = bold_base + "_mask.nii.gz"
+        brain_mask = Path(output_dir) / mask_name
+        binary_img = math_img('img > 0', img=boldref)
+        binary_img_conj = math_img('subbin*mnimask', subbin=binary_img, mnimask=mni_mask)
+        binary_img_conj.to_filename(brain_mask)
+    
+    # Transform BOLD FOV and brain masks to target space
+    ants_success, output_imgs = boldmask_to_targetspace(
+        boldmask=brain_mask,
+        fov_mask=fov_output_path, 
         t1w_to_mni_file=t1w_to_mni_files[0], 
-        boldref_to_t1w_file=boldref_to_t1w_files[0], 
+        boldref_to_t1w_file=to_t1w_files[0], 
         mni_template=mni_template, 
         output_tmp=output_dir
     )
-    
-    if not ants_success:
-        return None
-    
-    # Count extreme voxels in the output image
-    out_img_load = load_img(mni_path_out)
-    out_data = out_img_load.get_fdata()
-    num_extreme_voxels = np.sum(np.abs(out_data) > 1e10)
-    
-    # Extract brain and compute QC metrics
-    brainextract_success, mni_image, mask_target = target_extractbrain(
-        mni_image=mni_path_out, 
-        output_tmp=output_dir
-    )
-    
-    if not brainextract_success:
-        # Create a fallback mask if brain extraction fails
-        mask_insert = "_mask"
-        boldmni_base = mni_path_out.name[:-7]
-        out_mask_name = boldmni_base + mask_insert + ".nii.gz"
-        mask_target = Path(output_dir) / out_mask_name
-        binary_img = math_img('img > 0', img=out_img_load)
-        binary_img_conj = math_img('subbin*mnimask', subbin=binary_img, mnimask=mni_mask)
-        binary_img_conj.to_filename(mask_target)
-    
+
+    # Constrain MNI mask with BOLD FOV
+    fov_base_name = fov_output_path.name[:-7] if fov_output_path.name.endswith('.nii.gz') else fov_output_path.stem
+    constrained_mask = Path(output_dir) / f"{fov_base_name}_tpl-MNI152NLin2009cAsym-mask-constrained.nii.gz"
+    fov_mni_mask = math_img('subbin*mnimask', subbin=output_imgs['fovmask'], mnimask=mni_mask)
+    fov_mni_mask.to_filename(str(constrained_mask))
+
     # Calculate QC metrics
     qc_brain_checks = similarity_boldtarget_metrics(
-        img_path=mask_target, 
-        brainmask_path=mni_mask, 
+        img_path=output_imgs['refmask'], 
+        brainmask_path=constrained_mask, 
         n_extreme_voxels=num_extreme_voxels
     )
     
     return qc_brain_checks
-
-
-def process_subject_run_full(fmrilayout, mni_mask, output_dir):
-    """
-    Process a single subject's run for QC metrics.
-    
-    Parameters:
-    fmrilayout: BIDS layout object.
-    mni_mask (Path): Path to MNI mask image.
-    output_dir (Path): Output directory path.
-    
-    Returns:
-    dict or None: QC metrics if successful, None otherwise.
-    """
-    
-
-    
-    # Calculate QC metrics
-    qc_results = []
-
-    mni_brain_runs = fmrilayout.get(
-            suffix='mask',
-            extension='.nii.gz',
-            space='MNI152NLin2009cAsym',
-            res=2,
-            desc='brain',
-            return_type='file'
-            )
-    try:
-        
-        for brain_path in mni_brain_runs:
-            
-            qc_result = similarity_boldtarget_metrics(
-                img_path=Path(brain_path), # make sure it is a Path object, parse .name element 
-                brainmask_path=mni_mask, 
-                n_extreme_voxels=np.nan
-            )
-            if qc_result:
-                qc_results.append(qc_result)
-
-    except Exception as e:
-        print(f"Error in similarity_boldtarget_metrics: {str(e)}")
-
-
-    # return results as pd.DataFrame
-    return pd.DataFrame(qc_results)

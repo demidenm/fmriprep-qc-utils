@@ -96,6 +96,10 @@ else
     conda create -y -n "$ants_conda" -c conda-forge ants
 fi
 
+# Get path to the conda environment
+ants_env_path=$(conda env list | awk -v env="$ants_conda" '$1 == env {print $NF}')
+
+
 # === Sync Python env with uv ===
 uv sync
 
@@ -118,7 +122,7 @@ export PATH="${AFNI_DIR}:$PATH"
 export AFNI_PLUGINPATH="${AFNI_DIR}"
 
 # Add ANTs from conda env
-export ANTS_DIR="${HOME}/miniconda3/envs/ants_env"
+export ANTS_DIR="${ants_env_path}"
 export PATH="${ANTS_DIR}/bin:$PATH"
 
 echo "AFNI and ANTs installed and available in current shell session."
